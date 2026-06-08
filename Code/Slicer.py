@@ -1,7 +1,7 @@
 import trimesh
 import numpy as np
 import math
-import rectpack  # Importación para el empaquetado
+import rectpack 
 
 class OpenSlicer:
 
@@ -15,7 +15,7 @@ class OpenSlicer:
         print(f"Loading model from {file_path}...")
         geometry = trimesh.load(file_path)
         
-        # Si trimesh lo detecta como escena, lo unifica en una sola malla
+        #
         if isinstance(geometry, trimesh.Scene):
             if len(geometry.geometry) > 0:
                 self.mesh = trimesh.util.concatenate(list(geometry.geometry.values()))
@@ -41,17 +41,12 @@ class OpenSlicer:
         """
         from shapely.geometry import box
         
-        # Obtenemos los polígonos de la pieza
+        # 
         polys = slice_2d.polygons_full
         new_polys = []
         
         for poly in polys:
-            # Creamos una muesca: un rectángulo con el ancho del material
-            # Aquí centramos la muesca en el borde superior del polígono como ejemplo
             minx, miny, maxx, maxy = poly.bounds
-            
-            # Definir la geometría de la muesca (rectángulo)
-            # Anchura = espesor del material, Altura = profundidad de muesca
             notch_width = self.material_thickness
             notch = box(
                 (minx + maxx)/2 - notch_width/2, 
@@ -60,16 +55,14 @@ class OpenSlicer:
                 maxy
             )
             
-            # Operación booleana de resta
             new_poly = poly.difference(notch)
             new_polys.append(new_poly)
             
-        # Reconstruir el Path2D con las nuevas geometrías
-        # Nota: trimesh.path.path.Path2D permite reconstruir desde shapely
+
         from trimesh.path.creation import path_2d
         return path_2d(new_polys)
 
-    # --- MÉTODOS DE REBANADO (SLICING) ---
+    # --- SLICING METHODS ---
     def _clear_previous_results(self):
         """Limpia los contenedores de datos antes de un nuevo cálculo."""
         self.slices_2d = []
@@ -91,14 +84,14 @@ class OpenSlicer:
         
         bounds = self.mesh.bounds
         
-        # 1. Definir los planos de corte numéricamente
+        #
         x_levels = np.arange(bounds[0][0] + spacing_x, bounds[1][0], spacing_x)
         y_levels = np.arange(bounds[0][1] + spacing_y, bounds[1][1], spacing_y)
         
         x_slices = []
         y_slices = []
 
-        # --- FASE 1: Extracción limpia de perfiles sólidos primarios ---
+        # --- FASE 1: ---
         for x in x_levels:
             slice_3d = self.mesh.section(plane_origin=[x, 0, 0], plane_normal=[1, 0, 0])
             if slice_3d is not None:
@@ -113,7 +106,7 @@ class OpenSlicer:
                 if len(slice_2d.polygons_full) > 0:
                     y_slices.append({'slice_3d': slice_3d, 'slice_2d': slice_2d, 'transform': to_3d, 'coord': y, 'type': 'Y'})
 
-        # --- FASE 2: Conversión a Shapely y Sanamiento Topológico Inicial ---
+        # --- FASE 2: ---
         x_slices_polys = []
         for item in x_slices:
             polys = []
@@ -134,7 +127,7 @@ class OpenSlicer:
 
         t = self.material_thickness
 
-        # --- FASE 3: Calado de muescas por Proyección de Intersecciones ---
+        # --- FASE 3: ---
         for i, x_item in enumerate(x_slices):
             for j, y_item in enumerate(y_slices):
                 int_x = x_item['coord']
@@ -148,7 +141,6 @@ class OpenSlicer:
                 p3d_low = np.array([int_x, int_y, z_min_global, 1])
                 p3d_high = np.array([int_x, int_y, z_max_global, 1])
                 
-                # --- PROCESAR COSTILLA X (Corta mitad INFERIOR) ---
                 inv_transform_x = np.linalg.inv(x_item['transform'])
                 p2d_low_x = np.dot(inv_transform_x, p3d_low)[:2]
                 p2d_high_x = np.dot(inv_transform_x, p3d_high)[:2]
@@ -195,7 +187,6 @@ class OpenSlicer:
                         new_polys_x.extend([p for p in current_poly.geoms if not p.is_empty])
                 x_slices_polys[i] = new_polys_x
 
-                # --- PROCESAR COSTILLA Y (Corta mitad SUPERIOR) ---
                 inv_transform_y = np.linalg.inv(y_item['transform'])
                 p2d_low_y = np.dot(inv_transform_y, p3d_low)[:2]
                 p2d_high_y = np.dot(inv_transform_y, p3d_high)[:2]
@@ -242,7 +233,7 @@ class OpenSlicer:
                         new_polys_y.extend([p for p in current_poly.geoms if not p.is_empty])
                 y_slices_polys[j] = new_polys_y
 
-        # --- FASE 4: Reconstrucción y Empaquetado Final a Trimesh ---
+        # --- FASE 4: ---
         final_slices = []
         final_transforms = []
 
@@ -277,7 +268,7 @@ class OpenSlicer:
         rad_y = math.radians(angle_y)
         rad_z = math.radians(angle_z)
 
-        # Matriz de rotación y su inversa (para devolver las piezas a su posición original)
+        # 
         rot_matrix = trimesh.transformations.euler_matrix(rad_x, rad_y, rad_z, 'sxyz')
         inv_rot_matrix = trimesh.transformations.inverse_matrix(rot_matrix)
         
@@ -297,23 +288,23 @@ class OpenSlicer:
             slice_3d = temp_mesh.section(plane_origin=[0, 0, z], plane_normal=[0, 0, 1])
             
             if slice_3d is not None:
-                # AQUÍ ESTÁ LA MAGIA: Guardamos la matriz to_3d_transform
+                # 
                 slice_2d, to_3d_transform = slice_3d.to_planar()
                 if len(slice_2d.polygons_full) > 0:
                     generated_slices.append(slice_2d)
                     
-                    # Multiplicamos por la inversa para deshacer la rotación temporal
+                    # 
                     final_transform = np.dot(inv_rot_matrix, to_3d_transform)
                     generated_transforms.append(final_transform)
         
         print(f"[DEBUG] Se lograron extraer con éxito: {len(generated_slices)} láminas 2D válidas.")
         self.slices_2d = generated_slices
-        self.slice_transforms = generated_transforms # Guardamos las posiciones
+        self.slice_transforms = generated_transforms # 
         
         print("--- [DEBUG] FIN DE FLAT SLICING ---\n")
         return generated_slices
     
-    # Esqueleto para el método radial
+    
     def slice_radial(self, rad_cuts=12, vert_cuts=10):
         """
         Generates radial slices (vertical wedges around Z) and horizontal
@@ -578,7 +569,7 @@ class OpenSlicer:
         return final_slices
 
 
-    # Esqueleto para el método de contorno
+    # 
     def slice_contour(
         self,
         num_circles: int = 5,
@@ -590,30 +581,7 @@ class OpenSlicer:
         """
         Circular-ring slicer.
 
-        Genera N anillos cilíndricos concéntricos cuyo eje pasa por
-        (center_x, center_y, center_z). Para cada radio calcula la
-        intersección del cilindro con la malla 3D y produce los segmentos
-        de arco reales que quedan dentro del sólido.
-
-        Parámetros
-        ----------
-        num_circles   : cantidad de anillos/circunferencias.
-        ring_thickness: grosor de cada anillo en mm.
-                        Si es None usa self.material_thickness.
-        center_x/y/z  : centro del sistema de anillos en coordenadas del
-                        modelo. Si es None se usa el centroide de la malla.
-
-        Lógica
-        ------
-        1. Calcula r_max = distancia máxima de cualquier vértice al eje Z
-           pasando por (cx, cy).
-        2. Distribuye N radios equidistantes entre r_max/N y r_max.
-        3. Por cada radio R construye un anillo Shapely:
-               disco(R + t/2) − disco(R − t/2)
-        4. Intersecta ese anillo con la silueta horizontal de la malla a
-           cada nivel Z (paso = material_thickness) → segmentos de arco
-           reales dentro del sólido.
-        5. Cada segmento se almacena como Path2D en self.slices_2d.
+        
         """
         import trimesh
         import numpy as np
@@ -624,11 +592,11 @@ class OpenSlicer:
 
         t = ring_thickness if ring_thickness is not None else self.material_thickness
 
-        # --- Centro del sistema de anillos ---
+        # 
         c  = self.mesh.centroid
         cx = center_x if center_x is not None else c[0]
         cy = center_y if center_y is not None else c[1]
-        cz = center_z if center_z is not None else c[2]  # informativo, no usado en corte
+        cz = center_z if center_z is not None else c[2]  
 
         print(
             f"\n--- [DEBUG] CIRCULAR CONTOUR SLICING ---\n"
@@ -638,7 +606,7 @@ class OpenSlicer:
 
         bounds = self.mesh.bounds
 
-        # --- Radio máximo: distancia de cualquier vértice al eje (cx, cy) ---
+        # 
         verts_xy = self.mesh.vertices[:, :2] - np.array([cx, cy])
         r_max    = float(np.max(np.linalg.norm(verts_xy, axis=1)))
 
@@ -646,13 +614,13 @@ class OpenSlicer:
             print("[DEBUG] Radio máximo prácticamente cero — malla demasiado pequeña.")
             return []
 
-        # N radios equidistantes; el más interno arranca en r_max/N
+        # 
         radii = np.linspace(r_max / num_circles, r_max, num_circles)
 
         print(f"    Radio máximo detectado: {r_max:.2f} mm")
         print(f"    Radios: {[round(r, 2) for r in radii]}")
 
-        # Paso Z = material_thickness (igual que slice_flat)
+        # 
         z_step   = self.material_thickness
         z_levels = np.arange(bounds[0][2] + z_step / 2.0, bounds[1][2], z_step)
 
@@ -664,7 +632,7 @@ class OpenSlicer:
             r_inner = max(r - t / 2.0, 0.0)
 
             for z in z_levels:
-                # 1. Sección horizontal de la malla a este nivel Z
+                # 1. 
                 sec = self.mesh.section(
                     plane_origin=[cx, cy, z],
                     plane_normal=[0, 0, 1],
@@ -676,31 +644,30 @@ class OpenSlicer:
                 if len(slice_2d.polygons_full) == 0:
                     continue
 
-                # 2. Unión de todos los polígonos de la sección
+                # 2. 
                 mesh_union = unary_union(
                     [p.buffer(0) for p in slice_2d.polygons_full]
                 )
 
-                # 3. Proyectar el centro del anillo al espacio 2D local
-                #    to_planar() puede rotar/trasladar; usamos su inversa.
+                # 3. 
                 inv_to_3d = np.linalg.inv(to_3d)
                 c3d       = np.array([cx, cy, z, 1.0])
                 c2d       = np.dot(inv_to_3d, c3d)[:2]
 
-                # 4. Construir el anillo en el espacio 2D local
+                # 4.
                 ring_local = (
                     Point(c2d[0], c2d[1]).buffer(r_outer, resolution=128)
                     .difference(Point(c2d[0], c2d[1]).buffer(r_inner, resolution=128))
                 )
 
-                # 5. Intersección → solo los arcos DENTRO del sólido
+                # 5. 
                 segment = mesh_union.intersection(ring_local)
                 if segment.is_empty:
                     continue
 
                 segment = segment.buffer(0)
 
-                # 6. Convertir a Path2D y guardar
+                # 6. 
                 path_2d = trimesh.load_path(segment)
                 if path_2d is not None and len(path_2d.entities) > 0:
                     generated_slices.append(path_2d)
@@ -730,33 +697,31 @@ class OpenSlicer:
         visual_parts = []
         
         for slice_2d, transform in zip(self.slices_2d, self.slice_transforms):
-            # 1. Extruir el Path2D para darle el grosor del material
+            # 1. 
             mesh_3d = slice_2d.extrude(self.material_thickness)
-            
-            # CORRECCIÓN: Si el corte generó piezas desconectadas (islas), Trimesh devuelve una lista.
-            # Debemos unirlas en un solo objeto 3D antes de aplicar las transformaciones.
+
             if isinstance(mesh_3d, list):
                 if not mesh_3d:
-                    continue  # Saltar si la lista está vacía
+                    continue  #
                 mesh_3d = trimesh.util.concatenate(mesh_3d)
             
-            # 2. Centrar la extrusión en el eje Z (extrude() crece hacia +Z)
+            # 2. 
             center_z_matrix = trimesh.transformations.translation_matrix([0, 0, -self.material_thickness / 2.0])
             mesh_3d.apply_transform(center_z_matrix)
             
-            # 3. Aplicar la matriz de transformación guardada para enviarlo a su lugar
+            # 3. 
             mesh_3d.apply_transform(transform)
             
             visual_parts.append(mesh_3d)
 
-        # Retornamos una sola malla combinada
+        # 
         if visual_parts:
             return trimesh.util.concatenate(visual_parts)
         else:
             return self.mesh
         
 
-    # --- MÉTODO DE ANIDADO (NESTING) ---
+    # --- NESTING ---
 
     def make_text_path(self, text, h_size):
         """

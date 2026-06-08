@@ -5,8 +5,8 @@ import numpy as np
 import os
 import tempfile
 from streamlit_stl import stl_from_file
-from Slicer import OpenSlicer
-from DXFExporter import DXFExporter
+from Code.Slicer import OpenSlicer
+from Code.DXFExporter import DXFExporter
 
 
 st.set_page_config(page_title="OpenSlicer Web", layout="wide")
@@ -99,9 +99,9 @@ with st.sidebar:
                 tmp_path = tmp.name
             
             st.session_state.slicer.load_model(tmp_path)
-            os.unlink(tmp_path) # Limpieza segura inmediata del archivo temporal
+            os.unlink(tmp_path) # 
             
-            # VALIDACIÓN DE SEGURIDAD: Validar que el objeto mesh exista antes de leer vértices
+            # 
             if st.session_state.slicer.mesh is not None:
                 st.session_state.file_name = uploaded_file.name
                 
@@ -118,7 +118,7 @@ with st.sidebar:
             else:
                 st.error("The STL file could not be parsed into a valid 3D Mesh. Please verify the file integrity.")
 
-    # 2. CONTROL DE ESCALA E INFORMACIÓN DEL MODELO
+    # 2. 
     if st.session_state.file_name:
         with st.container(border=True):
             st.markdown("**Model Properties**")
@@ -184,16 +184,16 @@ with st.sidebar:
 
     st.divider()
 
-    # --- LÓGICA DE ACTUALIZACIÓN DE HOJA PARA NESTING ---
+    # --- 
     current_unit = st.session_state.get("unit_selector", "mm")
 
-    # Inicializar las variables internas la primera vez
+
     if "prev_unit" not in st.session_state:
         st.session_state.prev_unit = current_unit
         st.session_state.width_val = 600.0
         st.session_state.height_val = 400.0
 
-    # Si detectamos un cambio real de unidad, hacemos la conversión matemática exacta
+
     if current_unit != st.session_state.prev_unit:
         if current_unit == "inch":
             st.session_state.width_val = round(st.session_state.width_val / 25.4, 2)
@@ -203,7 +203,7 @@ with st.sidebar:
             st.session_state.height_val = round(st.session_state.height_val * 25.4, 1)
         st.session_state.prev_unit = current_unit
 
-    # Configuración de límites y textos según el estado actual
+    # 
     if current_unit == "inch":
         min_sheet_val = 1.0
         step_sheet_val = 0.5
@@ -213,7 +213,7 @@ with st.sidebar:
         step_sheet_val = 10.0
         label_suffix = "(mm)"
 
-    # Renderizado en pantalla de los inputs vinculados al session_state
+    # 
     st.subheader("Sheet Size for Nesting")
     col_w, col_h = st.columns(2)
     
@@ -223,7 +223,7 @@ with st.sidebar:
             min_value=min_sheet_val, 
             value=st.session_state.width_val, 
             step=step_sheet_val,
-            key=f"sheet_width_{current_unit}"  # Key dinámica para forzar refresco limpio en la UI
+            key=f"sheet_width_{current_unit}"  # 
         )
     with col_h:
         paper_height = st.number_input(
@@ -231,14 +231,14 @@ with st.sidebar:
             min_value=min_sheet_val, 
             value=st.session_state.height_val, 
             step=step_sheet_val,
-            key=f"sheet_height_{current_unit}" # Key dinámica para forzar refresco limpio en la UI
+            key=f"sheet_height_{current_unit}" # 
         )
     
-    # Guardamos cualquier modificación manual del usuario para no perder el dato
+    # 
     st.session_state.width_val = paper_width
     st.session_state.height_val = paper_height
 
-    # Normalización: Las variables finales quedan convertidas siempre a milímetros (mm) para el motor DXF
+    # 
     if current_unit == "inch":
         paper_width *= 25.4
         paper_height *= 25.4
@@ -246,11 +246,10 @@ with st.sidebar:
     st.divider()
 
 
-    # 3. PARÁMETROS DE CORTE (FORMULARIOS DEDICADOS PARA LAS 4 TÉCNICAS)
+    # 3. 
     st.subheader("Slicing Settings")
     
-    # El selector vive afuera para cambiar el contexto de la UI dinámicamente
-    # Actualizado con las 4 técnicas estándar de fabricación digital
+    # 
     slice_method = st.selectbox(
         "Slicing Method",
         options=["Interlocking Grid", "Radial Interlocking", "Flat / Stacked", "Contour Slicing"],
@@ -258,7 +257,7 @@ with st.sidebar:
         on_change=reset_slicer_data
     )
     
-    # --- CASO A: FORMULARIO PARA INTERLOCKING GRID (MATRIZ X/Y) ---
+    # --- CASO A: INTERLOCKING GRID  ---
     if slice_method == "Flat / Stacked":
         with st.form("form_flat_stacked"):
             thick = st.number_input("Material Thickness (mm)", min_value=0.1, max_value=50.0, value=3.0, step=0.5)
@@ -278,11 +277,10 @@ with st.sidebar:
                 st.success("Flat Slicing Complete!")
                 st.rerun()
 
-    # --- CASO B: FORMULARIO PARA RADIAL INTERLOCKING (DIVISIONES ANGULARES) ---
+    # --- CASO B: RADIAL INTERLOCKING  ---
     elif slice_method == "Radial Interlocking":
         with st.form("form_radial"):
             thick = st.number_input("Material Thickness (mm)", min_value=0.1, max_value=50.0, value=3.0, step=0.5)
-            # Parámetros angulares típicos para radiales
             radial_count = st.number_input("Number of Radial Slices", min_value=3, value=12, step=1)
             layer_count = st.number_input("Number of Vertical Layers", min_value=2, value=10, step=1)
             
@@ -291,13 +289,12 @@ with st.sidebar:
             if submit_radial:
                 st.session_state.slicer.material_thickness = thick
                 with st.spinner("Processing Radial Geometry..."):
-                    # Llamada a tu método radial dedicado (Asegúrate de que exista en Slicer.py)
                     st.session_state.slicer.slice_radial(rad_cuts=radial_count, vert_cuts=layer_count)
                     st.session_state.exporter.arrange_grid_nesting(paper_width, paper_height)
                 st.success("Radial Slicing Complete!")
                 st.rerun()
 
-    # --- CASO C: FORMULARIO PARA FLAT / STACKED (CAPAS PARALELAS ORIENTABLES) ---
+    # --- CASO C: FLAT / STACKED ---
     elif slice_method == "Interlocking Grid":
         with st.form("form_interlocking_grid"):
             thick = st.number_input("Material Thickness (mm)", min_value=0.1, max_value=50.0, value=3.0, step=0.5)
@@ -309,13 +306,12 @@ with st.sidebar:
             if submit_grid:
                 st.session_state.slicer.material_thickness = thick
                 with st.spinner("Processing Interlocking Grid..."):
-                    # Tu backend debe aceptar espaciado X/Y diferenciado
                     st.session_state.slicer.slice_interlocking(spacing_x, spacing_y)
                     st.session_state.exporter.arrange_grid_nesting(paper_width, paper_height)
                 st.success("Grid Slicing Complete!")
                 st.rerun()
 
-    # --- CASO D: FORMULARIO PARA CONTOUR SLICING (TOPOGRÁFICO/CURVO) ---
+    # --- CASO D: CONTOUR SLICING  ---
     elif slice_method == "Contour Slicing":
         with st.form("form_contour"):
             st.markdown("**Circular Slicing Parameters**")
@@ -323,12 +319,12 @@ with st.sidebar:
             num_circles = st.number_input("Number of Circles", min_value=1, max_value=100, value=5, step=1)
             
             st.markdown('<small style="color:666">Center Location Coordinates</small>', unsafe_allow_html=True)
-            col_cx, col_cy, col_cz = st.columns(3)        # ← añadir col_cz
+            col_cx, col_cy, col_cz = st.columns(3)        
             with col_cx:
                 cx = st.number_input("Center X (mm)", value=0.0, step=10.0)
             with col_cy:
                 cy = st.number_input("Center Y (mm)", value=0.0, step=10.0)
-            with col_cz:                                   # ← nuevo
+            with col_cz:                                  
                 cz = st.number_input("Center Z (mm)", value=0.0, step=10.0)
 
             submit_contour = st.form_submit_button("Generate Circular Slices")
@@ -338,9 +334,9 @@ with st.sidebar:
                     st.session_state.slicer.slice_contour(
                         center_x=cx,
                         center_y=cy,
-                        center_z=cz,               # ← nuevo
+                        center_z=cz,               
                         num_circles=num_circles,
-                        ring_thickness=thick       # ← corregido
+                        ring_thickness=thick       
                     )
                 st.session_state.exporter.arrange_grid_nesting(paper_width, paper_height)
                 st.success("Concentric Slicing Complete!")
@@ -348,11 +344,10 @@ with st.sidebar:
 
     st.divider()
 
-    # 4. EXPORTACIÓN DE RESULTADOS
+    # 4. EXPORT
     if st.session_state.exporter.layouts:
         st.subheader("Preview & Download")
 
-        # --- BOTÓN DE VISUALIZACIÓN DXF (Efecto Presionado) ---
         is_dxf_view = (st.session_state.view_mode == "DXF")
         btn_label = "Viewing DXF (Click to return to 3D)" if is_dxf_view else "View 2D DXF Layouts"
         
@@ -364,13 +359,11 @@ with st.sidebar:
 
         num_sheets = len(st.session_state.exporter.layouts)
 
-        # FIX 3: inform the user how many sheets were generated.
         if num_sheets == 1:
             st.caption("1 sheet generated.")
         else:
             st.caption(f"{num_sheets} sheets generated.")
 
-        # Offer a download button for every sheet.
         for sheet_idx, layout in enumerate(st.session_state.exporter.layouts, start=1):
             dxf_data = layout.export(file_type='dxf')
             st.download_button(
@@ -378,14 +371,13 @@ with st.sidebar:
                 data=dxf_data,
                 file_name=f"OpenSlicer_Sheet_{sheet_idx}.dxf",
                 mime="application/dxf",
-                key=f"dxf_download_{sheet_idx}",   # unique key required by Streamlit
+                key=f"dxf_download_{sheet_idx}",   
             )
 
 # --- MAIN VIEWPORT ---
 if st.session_state.slicer.mesh:
     st.markdown('<div class="watermark-title"><h1>OpenSlicer</h1></div>', unsafe_allow_html=True)
     
-    # DECISIÓN DE RENDER: ¿DXF 2D o Visualización 3D?
     if st.session_state.exporter.layouts and st.session_state.view_mode == "DXF":
         import plotly.graph_objects as go
         
@@ -395,7 +387,6 @@ if st.session_state.slicer.mesh:
             dxf_bytes = layout.export(file_type='dxf')
             path = trimesh.load_path(trimesh.util.wrap_as_stream(dxf_bytes), file_type='dxf')
             
-            # Agrupar todos los segmentos separados por 'None' (optimización para Plotly)
             all_x = []
             all_y = []
             for entity in path.entities:
@@ -413,7 +404,6 @@ if st.session_state.slicer.mesh:
                 showlegend=False
             ))
             
-            # Forzar escala 1:1, fondo blanco y quitar grillas
             fig.update_layout(
                 yaxis=dict(scaleanchor="x", scaleratio=1, showgrid=False, zeroline=False, visible=False),
                 xaxis=dict(showgrid=False, zeroline=False, visible=False),
@@ -427,14 +417,13 @@ if st.session_state.slicer.mesh:
             st.plotly_chart(fig, use_container_width=True)
 
     else:
-        # VISUALIZADOR 3D ESTÁNDAR (¡Todo este bloque va indentado dentro del else!)
         if st.session_state.exporter.layouts:
             with st.spinner("Generating 3D Preview..."):
                 display_mesh = st.session_state.slicer.get_visual_prediction()
-                display_color = '#e67e22'  # Color naranja/madera para el resultado final
+                display_color = '#e67e22' 
         else:
             display_mesh = st.session_state.slicer.mesh
-            display_color = '#1f77b4'  # Azul para el modelo original
+            display_color = '#1f77b4' 
 
         tmp_preview_path = None
         try:
